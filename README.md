@@ -4,29 +4,23 @@ An installable `vouch` skill for building hosted Vouch verification flows with t
 
 ## Install With `npx skills`
 
-List what the repo exposes:
-
-```bash
-npx skills add https://github.com/vlayer-xyz/vouch-skills --list
-```
-
 Install the skill:
 
 ```bash
-npx skills add https://github.com/vlayer-xyz/vouch-skills --skill vouch
+npx skills add vlayer-xyz/vouch-skills --skill vouch
 ```
 
-Install everything in the repo:
+## What is Vouch?
 
-```bash
-npx skills add https://github.com/vlayer-xyz/vouch-skills --all
-```
+Vouch enables data verification from internet platforms. Users can generate cryptographic attestations that prove data authenticity (Proof of Traded Volume at Binance, Proof of Demographics at Instagram etc). This skill provides server-side web proof generation for use within Claude Code and other AI agents.
 
-For local validation while editing the repo:
+## Use Cases
 
-```bash
-npx skills add . --list
-```
+- **Non-Doc KYC & KYB** - Verify identity, address, age, ownership, and financial details
+- **Candidate Authenticity** - Confirm employment, income, and professional claims
+- **Social & Audience Verification** - Validate account ownership and audience metrics
+- **Email Authenticity** - Prove email content via Gmail API
+- **Financial Data** - Verify portfolio data from authenticated APIs
 
 ## What The Skill Covers
 
