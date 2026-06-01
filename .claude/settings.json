@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.getvouch.io)",
+      "WebFetch(domain:docs.vlayer.xyz)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(curl -s https://app.getvouch.io/api/data-source/catalog)",
+      "Bash(node -e ' *)"
+    ]
+  }
+}

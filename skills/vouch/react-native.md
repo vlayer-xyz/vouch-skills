@@ -53,29 +53,48 @@ pod install
 
 ### Android Setup
 
-Set `minSdkVersion` to `33` or higher in `android/app/build.gradle`.
+Set `minSdkVersion` to `33` or higher in `android/app/build.gradle`, then build:
+
+```bash
+./gradlew clean
+./gradlew assembleDebug
+```
 
 ## Initialize The SDK
 
-Initialize once near app startup:
+Initialize once near app startup. Both `customerId` and `apiKey` are required. Do not `await` — `initialize()` is fire-and-forget; poll `isInitialized()` to gate UI:
 
 ```typescript
 import VouchSDK from "@getvouch/react-native-sdk";
 
-await VouchSDK.initialize({
+VouchSDK.initialize({
   customerId: "CUSTOMER_ID",
+  apiKey: "API_KEY",
+  languageCodeOverride: "en-US", // optional, BCP 47 tag
 });
 ```
 
-If you need a readiness check:
+Poll readiness in a `useEffect` before enabling verification UI:
 
 ```typescript
-if (!VouchSDK.isInitialized()) {
-  VouchSDK.initialize({ customerId: "CUSTOMER_ID" });
-}
+useEffect(() => {
+  if (VouchSDK.isInitialized()) return;
+  VouchSDK.initialize({ customerId: CUSTOMER_ID, apiKey: API_KEY });
+
+  const id = setInterval(() => {
+    if (VouchSDK.isInitialized()) {
+      setIsReady(true);
+      clearInterval(id);
+    }
+  }, 50);
+
+  return () => clearInterval(id);
+}, []);
 ```
 
 ## Start A Verification
+
+`webhookUrl` is required. `inputs` and `metadata` are optional.
 
 ```typescript
 import VouchSDK from "@getvouch/react-native-sdk";
@@ -85,9 +104,8 @@ async function requestVerification() {
     const result = await VouchSDK.start({
       dataSourceId: "DATA_SOURCE_ID",
       webhookUrl: "https://your-server.com/webhook",
-      inputs: {
-        username: "creator_handle",
-      },
+      inputs: { ig_handle: "creator_handle" },
+      metadata: "userId:123",              // optional, max 256 chars
     });
 
     console.log("Verification successful:", result.proofId);
@@ -97,6 +115,17 @@ async function requestVerification() {
     console.error("Error code:", error.reason);
   }
 }
+```
+
+### Error Codes
+
+| Code | Meaning |
+|------|---------|
+| -1 | SDK not initialized |
+| 6 | Verification failed |
+| 10 | Network loss during verification |
+| 12 | Invalid API key |
+| 13 | Server error |
 ```
 
 ## iOS Version Check
