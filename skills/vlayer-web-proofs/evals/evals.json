@@ -1,0 +1,52 @@
+{
+  "skill_name": "vlayer-web-proofs",
+  "notes": [
+    "Run each case >=3x against Opus + Sonnet at minimum; baseline is `without_skill` (no SKILL.md in context).",
+    "Without the skill, models tend to validate only `success: true` from /verify and skip the notaryKeyFingerprint check, and may not know the HTTPS-only / redaction constraints — watch for those in the baseline run.",
+    "`assertions` are necessary mechanically-checkable conditions, not exhaustive."
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Prove that api.github.com/users/octocat returned a specific public_repos count, but don't let the proof reveal our auth token.",
+      "expected_output": "Calls POST https://web-prover.production.vlayer.xyz/api/v2.0/prove with url/method/headers, sends the API key as an Authorization: Bearer header from a server-side context, and includes a redaction rule hiding the Authorization request header (either the `headers` or `headers_except` form) while still proving the response body.",
+      "assertions": [
+        "POST request targets https://web-prover.production.vlayer.xyz/api/v2.0/prove",
+        "Includes a redaction entry for the Authorization request header (request.headers includes \"Authorization\" or request.headers_except excludes it)",
+        "VLAYER_API_KEY / vlayer Authorization header usage is shown server-side only, not embedded in client-side code",
+        "Does not suggest putting the GitHub auth token in the proved URL as a query parameter to avoid redaction"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "After we prove an API response, how do we verify it later in a way a third party could also trust, not just check that verification succeeded?",
+      "expected_output": "Calls POST /api/v2.0/verify with the full proof object (data, version, meta), and checks both `success: true` AND that notaryKeyFingerprint matches an expected/trusted value before treating the transcript as trustworthy — success alone is not sufficient.",
+      "assertions": [
+        "Calls POST https://web-prover.production.vlayer.xyz/api/v2.0/verify with the data/version/meta proof object",
+        "Explicitly checks notaryKeyFingerprint against an expected/trusted fingerprint, not just the top-level success flag",
+        "Does not present `success: true` alone as sufficient grounds to trust the proof"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I want to prove a plain HTTP (not HTTPS) internal endpoint returned a certain response.",
+      "expected_output": "States that the API only supports HTTPS URLs and that an HTTP url will be rejected with an INVALID_REQUEST error, rather than attempting the call as if it would succeed.",
+      "assertions": [
+        "States that only HTTPS URLs are supported by /prove",
+        "Identifies INVALID_REQUEST (or equivalent rejection) as the outcome of submitting an http:// URL, rather than presenting working sample code for an http:// target as if it would succeed"
+      ]
+    }
+  ],
+  "trigger_tests": {
+    "should_activate": [
+      "I need a tamper-proof record showing this exchange-rate API returned this exact value at this exact time, without the API's cooperation.",
+      "How do I redact a header from a vlayer proof while still revealing the rest of the request?",
+      "Generate a cryptographic proof of this HTTPS API response and verify it later."
+    ],
+    "should_not_activate": [
+      "Generate a Vouch hosted verification URL for Instagram account ownership.",
+      "Which datasource ID supports TikTok video stats?",
+      "Write the Vouch webhook handler that checks the PSK header and persists the verified account."
+    ]
+  }
+}

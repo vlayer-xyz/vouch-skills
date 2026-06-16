@@ -1,0 +1,55 @@
+{
+  "skill_name": "vouch",
+  "notes": [
+    "Run each case >=3x against Opus + Sonnet at minimum; baseline is `without_skill` (no SKILL.md, no reference.md, no react-native.md in context).",
+    "Without the skill, models tend to parse the webhook body before checking auth, use `===` instead of a timing-safe compare, and skip the requestId idempotency step — watch for those specifically in the baseline run.",
+    "`assertions` are necessary mechanically-checkable conditions, not exhaustive."
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm adding Instagram creator verification with follower count to our payout flow. Generate the hosted verification URL and write the webhook handler that checks auth and persists the verified account.",
+      "expected_output": "Uses @getvouch/sdk's getDataSourceUrl with an Instagram datasourceId, redirectBackUrl, optional webhookUrl, and a metadata payload kept under 256 characters. The webhook handler reads the Authorization header and rejects with 401 using a timing-safe comparison against `PSK <secret>` BEFORE parsing the JSON body. Only after auth passes does it parse outputs/webProofs and persist the event keyed by requestId so retries are idempotent (e.g. unique constraint + catch 23505, or onConflict upsert).",
+      "assertions": [
+        "Webhook handler checks the Authorization/PSK header and can return 401 before any call to parse/await the JSON body",
+        "Uses a constant-time comparison (e.g. crypto.timingSafeEqual) for the secret check rather than plain `===` or `includes`",
+        "metadata passed to getDataSourceUrl is JSON.stringify'd and the response notes or respects the 256-character cap",
+        "Persistence step is idempotent by requestId (unique constraint + conflict handling, or an explicit dedupe check) rather than a plain insert with no duplicate handling",
+        "Does not treat outputs or webProofs as trustworthy before the auth check has passed"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Compliance wants us to independently verify the web proof cryptographically instead of just trusting whatever the webhook outputs say.",
+      "expected_output": "Submits each webProof's presentationJson to POST https://app.getvouch.io/api/v1/verify, checks that the response indicates success before treating the proof as valid, and accounts for webProofs being absent on sensitive datasources (so this step is conditional, not assumed to always run).",
+      "assertions": [
+        "POSTs to https://app.getvouch.io/api/v1/verify with presentationJson in the request body",
+        "Checks a success/validity field on the response and rejects or throws when verification fails, rather than assuming any 2xx response means valid",
+        "Notes or handles the case where payload.webProofs is absent (e.g. guards with `?? []` or an explicit check) rather than assuming it's always populated"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We have a React Native app and want users to verify bank account ownership without leaving the app.",
+      "expected_output": "Recommends the @getvouch/react-native-sdk embedded flow (VouchSDK.initialize + VouchSDK.start) instead of the hosted getDataSourceUrl + redirect flow, notes that webhookUrl is required in start(), and guards the flow with an iOS version/support check before starting verification.",
+      "assertions": [
+        "Recommends @getvouch/react-native-sdk / VouchSDK.start rather than getDataSourceUrl for this in-app use case",
+        "States that webhookUrl is a required field in VouchSDK.start params",
+        "References an iOS support/version guard (e.g. VouchSDK.isSupported()) before starting verification, or explicitly notes iOS 14-16.3 is unsupported"
+      ]
+    }
+  ],
+  "trigger_tests": {
+    "should_activate": [
+      "I need to let creators connect their Instagram account and verify their follower count before we approve a payout.",
+      "Build a webhook handler that receives Vouch verification results and links the verified account to our user record.",
+      "How do I generate a Vouch hosted verification URL for a TikTok proof and correlate it back to my user when they return?",
+      "Set up in-app bank account verification inside our React Native app using Vouch."
+    ],
+    "should_not_activate": [
+      "I want to cryptographically prove that this third-party API returned a specific JSON response, independent of any user identity flow.",
+      "Which datasource ID should I use to verify someone's Coinbase balance?",
+      "How do I redact the Authorization header from a vlayer web proof while still revealing the other headers?"
+    ]
+  }
+}

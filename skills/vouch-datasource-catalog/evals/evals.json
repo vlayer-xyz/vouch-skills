@@ -1,0 +1,52 @@
+{
+  "skill_name": "vouch-datasource-catalog",
+  "notes": [
+    "Run each case >=3x against Opus + Sonnet at minimum; baseline is `without_skill` (no SKILL.md in context).",
+    "Without the skill, models will confidently hallucinate datasourceId values and miss `mobile-only` / geography / webProofs-suppression caveats since none of that is guessable. Mismatched or fabricated UUIDs in the without_skill baseline are expected and exactly what this skill should fix.",
+    "`assertions` are necessary mechanically-checkable conditions, not exhaustive."
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to verify a creator's Instagram follower count and audience demographics for a brand deal, used in our hosted web flow. Which datasource should I use and what inputs do I pass?",
+      "expected_output": "Recommends datasourceId 687d6f6f-5346-4fb1-9552-222d4a225451 (Instagram \"Proof of Account with Stats and Demographics\"), with inputs: { ig_handle: <handle> }, since it's the one datasource covering both stats and demographics together.",
+      "assertions": [
+        "Recommends datasourceId 687d6f6f-5346-4fb1-9552-222d4a225451, or explicitly justifies a different ID by name as also covering both stats and demographics",
+        "Specifies the input as ig_handle (not handle, username, or another key)",
+        "Does not recommend a mobile-only Instagram datasource for this stated hosted/web use case"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We want to verify a US user's Bank of America balance, and it has to work in our hosted web flow, not just mobile.",
+      "expected_output": "Recommends datasourceId 24a1ab97-4201-4b92-8026-e54770bc0564 (Bank of America \"Proof of Balance\"), flags that Bank of America datasources are USA-only, and avoids 10c13566-61b7-4e4a-830e-02a31d2a361d (\"Proof of Last Transaction\") because that one is mobile-only.",
+      "assertions": [
+        "Recommends datasourceId 24a1ab97-4201-4b92-8026-e54770bc0564 for the balance use case",
+        "States the USA-only geography restriction on Bank of America datasources",
+        "Explicitly avoids or flags 10c13566-61b7-4e4a-830e-02a31d2a361d as unsuitable because it is mobile-only"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "If we verify someone's Coinbase account balance, do we get a webProofs object we can independently verify, or just outputs?",
+      "expected_output": "States that Coinbase falls under the Banking & Finance category, which omits webProofs from the webhook payload, while verified outputs are still delivered. Does not claim presentationJson/webProofs will be available for this datasource.",
+      "assertions": [
+        "States that this datasource's category (Banking & Finance / financial) omits webProofs from the webhook payload",
+        "Clarifies that verified outputs are still delivered even without webProofs",
+        "Does not claim webProofs/presentationJson will be present for independent cryptographic verification on this datasource"
+      ]
+    }
+  ],
+  "trigger_tests": {
+    "should_activate": [
+      "Which datasourceId should I use to verify TikTok account ownership without extra stats?",
+      "What inputs does the GitHub contributions datasource require?",
+      "Is there a sandbox/test datasource I can use while developing, without a real account?"
+    ],
+    "should_not_activate": [
+      "Write the webhook handler that verifies the PSK header for Vouch.",
+      "How do I redact headers when generating a vlayer web proof?",
+      "Generate the hosted verification URL using the SDK once I already know the datasourceId."
+    ]
+  }
+}
