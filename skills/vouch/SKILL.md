@@ -1,6 +1,6 @@
 ---
 name: vouch
-description: Build hosted Vouch verification flows with @getvouch/sdk. Generate verification URLs, configure inputs and metadata, verify PSK-protected webhooks, parse webProofs and outputs, optionally verify presentationJson cryptographically, and persist verified accounts. Use when integrating Vouch datasource verification into backend services.
+description: Build hosted Vouch verification flows with @getvouch/sdk, and verify public social data with the Social Data API. Generate verification URLs, configure inputs and metadata, verify PSK-protected webhooks, parse webProofs and outputs, optionally verify presentationJson cryptographically, and persist verified accounts; then look up post metrics, comments, Instagram likers, and creator profiles server-side. Use when integrating Vouch datasource verification or public Instagram and TikTok lookups into backend services.
 license: MIT. LICENSE.txt has complete terms
 ---
 
@@ -63,6 +63,28 @@ curl -s https://app.getvouch.io/api/data-source/catalog | jq '.[] | { id, name, 
 For embedded mobile flows, Vouch provides a separate React Native SDK. Use that path when verification should happen inside a React Native app rather than through a hosted browser redirect and webhook flow.
 
 See `react-native.md`.
+
+## Social Data API
+
+Vouch verifies *private* data: the user proves it from inside their own account.
+The Social Data API verifies *public* data with no end user involved — give it a
+public Instagram or TikTok post and it performs a server-side lookup of who
+commented, who liked it, and how it is performing.
+
+Most creator campaigns use both. Vouch confirms the handle is theirs and the
+audience is real; the Social Data API confirms they posted, and rewards the
+people who engaged.
+
+```bash
+curl -s "$SOCIAL_DATA_API_BASE_URL/admin/challenges/1/metrics" \
+  -H "Authorization: Bearer $SOCIAL_DATA_API_TOKEN"
+```
+
+Credentials are separate from Vouch — an API token and `brandId` in place of
+`customerId` — and its webhooks are signed with HMAC-SHA256 rather than the
+pre-shared key used above. Do not reuse one webhook verification path for both.
+
+See `social-data-api.md` and https://docs.vlayer.xyz/social-data-api.
 
 ## Core Operations
 
@@ -305,3 +327,11 @@ Read `react-native.md` For
 - React Native installation requirements
 - initialization and verification examples
 - links back to the official React Native docs
+
+Read `social-data-api.md` For
+
+- the public-data lookup endpoints, grouped by what they read
+- post metrics staleness detection via `lastRefresh`
+- the async Instagram likers fetch and its bounded polling loop
+- the shared `ScrapingError` codes, and which are worth retrying
+- a typed client with retry that skips permanent and auth failures
