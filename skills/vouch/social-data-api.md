@@ -61,15 +61,19 @@ Interactive docs live at `{API_BASE_URL}/docs`.
 |---|---|
 | **Brand** | Owns campaigns and webhooks. You pass `brandId` when creating a campaign or registering a webhook. |
 | **Campaign** | A reward program with a `title`, `pointsReward`, and one challenge. |
-| **Challenge** | The post to engage with, parsed from the campaign's `targetUrl`. Every scrape and verification route takes `challengeId`; you never pass the post URL again. |
+| **Challenge** | The post to engage with, parsed from the campaign's `targetUrl`. Challenge-scoped scrape and verification routes take `challengeId`; you never pass the post URL again. Pre-campaign and creator routes are addressed differently. |
 | **Creator** | A user identified by your own `externalId`, with linked Instagram or TikTok accounts. |
 | **Attempt** | One creator's progress through one challenge, tracked as a state machine. |
 
 ## Response Envelope
 
-Successful responses wrap the result in `data`. List routes add `pagination`,
-which accepts `page` (default `1`) and `limit` (default `20`). The likers list
-caps `limit` at `100`.
+Successful responses wrap the result in `data`. Paginated list routes add
+`pagination`, which accepts `page` (default `1`) and `limit` (default `20`). The
+likers list caps `limit` at `100`.
+
+Not every list route paginates. `GET /social-accounts` returns a bare `data`
+array, because it lists one user's own connected accounts and is bounded by the
+platforms on offer.
 
 ```json
 { "data": [], "pagination": { "page": 1, "limit": 20, "total": 150 } }
@@ -99,9 +103,11 @@ Errors return an `error` code and a human-readable `message`. Branch on `error`;
 | Accounts | `POST /social-accounts/connect` | Starts Vouch verification |
 | Accounts | `GET /social-accounts` | Connected accounts |
 
-Two endpoints read a platform without any stored record first:
-`/admin/posts/thumbnail` and `GET /admin/creators/verify/{handle}`. Everything
-else is keyed on a challenge or a user that already exists.
+One endpoint reads a platform without any stored record first:
+`GET /admin/posts/thumbnail`. Every other platform read is keyed on a challenge
+or a user that already exists. `GET /admin/creators/verify/{handle}` is the odd
+one out in the other direction — it takes a handle but reads only your own
+records, so it touches no platform at all.
 
 ---
 
@@ -466,12 +472,16 @@ do not poll.
 const BASE_URL = process.env.SOCIAL_DATA_API_BASE_URL!;
 const TOKEN = process.env.SOCIAL_DATA_API_TOKEN!;
 
-const PERMANENT = new Set([
+const PERMANENT_CODES = new Set([
   "VALIDATION_ERROR",
   "POST_AGE_RESTRICTED",
   "POST_NOT_ACCESSIBLE",
   "POST_NOT_FOUND",
 ]);
+
+// 401 and 403 mean the token is wrong or lacks admin rights. Neither improves
+// by waiting, so they are permanent even though they carry no scraping code.
+const PERMANENT_STATUSES = new Set([400, 401, 403, 404, 422]);
 
 export class LookupError extends Error {
   constructor(
@@ -484,8 +494,28 @@ export class LookupError extends Error {
   }
 
   get permanent() {
-    return PERMANENT.has(this.code);
+    return PERMANENT_CODES.has(this.code) || PERMANENT_STATUSES.has(this.status);
   }
+}
+
+/**
+ * Retry-After is either delay-seconds or an HTTP-date (RFC 9110). Number() on a
+ * date gives NaN, and NaN is not nullish, so an unguarded `?? fallback` would
+ * pass NaN to setTimeout — which fires immediately and turns a rate-limit into
+ * a retry storm. Return null for anything unparseable so the caller backs off.
+ */
+function parseRetryAfter(header: string | null): number | null {
+  if (!header) return null;
+
+  const seconds = Number(header.trim());
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds);
+  }
+
+  const date = Date.parse(header);
+  if (Number.isNaN(date)) return null;
+
+  return Math.max(0, Math.ceil((date - Date.now()) / 1000));
 }
 
 async function socialApi<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -508,12 +538,10 @@ async function socialApi<T>(path: string, init: RequestInit = {}): Promise<T> {
     error?: string;
     message?: string;
   };
-  const retryAfter = res.headers.get("Retry-After");
-
   throw new LookupError(
     body.error ?? "UNKNOWN",
     res.status,
-    retryAfter ? Number(retryAfter) : null,
+    parseRetryAfter(res.headers.get("Retry-After")),
     body.message ?? res.statusText,
   );
 }
@@ -575,13 +603,24 @@ type LikersStatus = {
 
 const TERMINAL = new Set(["succeeded", "failed", "aborted", "timed_out"]);
 
-export async function fetchLikers(challengeId: number, maxCount = 1000) {
+const POLL_INTERVAL_MS = 5_000;
+const POLL_DEADLINE_MS = 10 * 60 * 1000;
+
+export async function fetchLikers(
+  challengeId: number,
+  maxCount = 1000,
+  deadlineMs = POLL_DEADLINE_MS,
+) {
   await socialApi(`/admin/challenges/${challengeId}/likers/refresh?maxCount=${maxCount}`, {
     method: "POST",
   });
 
-  while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  // The 45s per-request timeout bounds one call, not the loop. Without this
+  // deadline a run stuck on `pending` keeps the caller's promise alive forever.
+  const giveUpAt = Date.now() + deadlineMs;
+
+  while (Date.now() < giveUpAt) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 
     const { data } = await socialApi<{ data: LikersStatus | null }>(
       `/admin/challenges/${challengeId}/likers/status`,
@@ -594,11 +633,16 @@ export async function fetchLikers(challengeId: number, maxCount = 1000) {
       return data;
     }
   }
+
+  throw new Error(
+    `Likers fetch for challenge ${challengeId} did not finish within ${deadlineMs}ms`,
+  );
 }
 ```
 
-Give the loop a wall-clock budget in production so a wedged fetch cannot pin a
-worker indefinitely.
+The run keeps going server-side after the deadline. Poll
+`GET /admin/challenges/{challengeId}/likers/status` again later, or read the
+rows directly, rather than starting a second fetch.
 
 ## Integration Notes
 
