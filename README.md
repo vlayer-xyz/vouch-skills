@@ -43,6 +43,28 @@ The skill covers the main pieces of a hosted Vouch verification flow:
 - normalize provider-specific output fields before persistence
 - store the raw webhook payload before side effects so retries stay safe
 
+## Social Data API
+
+Vouch verifies private data, with the user proving it from inside their own
+account. The [Social Data API](https://docs.vlayer.xyz/social-data-api) verifies
+public Instagram and TikTok data with no end user involved, through a
+server-side lookup. Documented in
+[`skills/vouch/social-data-api.md`](skills/vouch/social-data-api.md):
+
+- look up a post from its URL before a campaign exists for it
+- read post metrics, and tell a quiet post from a failing scraper
+- list and sweep comments
+- run the asynchronous likers fetch and poll it to completion
+- refresh a creator profile, or check whether a handle is connected
+- handle the shared `ScrapingError` codes, and retry only the transient ones
+
+Access is arranged separately from Vouch: you get an API token and a base URL.
+Point `SOCIAL_DATA_API_BASE_URL` at your deployment, then read its spec:
+
+```bash
+curl -s "$SOCIAL_DATA_API_BASE_URL/openapi.json" | jq -r '.paths | keys[]'
+```
+
 ## Discover Datasource IDs
 
 You can fetch the current datasource catalog directly:
@@ -69,6 +91,7 @@ For embedded mobile flows, see the dedicated React Native guide in this repo:
 skills/
 └── vouch/
     ├── react-native.md
+    ├── social-data-api.md
     ├── SKILL.md
     ├── reference.md
     └── LICENSE.txt
@@ -80,6 +103,8 @@ skills/
 - [Getting Started](https://docs.getvouch.io/getting-started/first-steps)
 - [Widget Builder](https://docs.getvouch.io/getting-started/widget-builder)
 - [React Native Guide](skills/vouch/react-native.md)
+- [Social Data API Guide](skills/vouch/social-data-api.md)
+- [Social Data API Docs](https://docs.vlayer.xyz/social-data-api)
 
 ## License
 
