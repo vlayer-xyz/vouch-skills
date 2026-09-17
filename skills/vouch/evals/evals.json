@@ -2,8 +2,9 @@
   "skill_name": "vouch",
   "notes": [
     "Run each case >=3x against Opus + Sonnet at minimum; baseline is `without_skill` (no SKILL.md, no reference.md, no react-native.md in context).",
-    "Without the skill, models tend to parse the webhook body before checking auth, use `===` instead of a timing-safe compare, and skip the requestId idempotency step — watch for those specifically in the baseline run.",
-    "`assertions` are necessary mechanically-checkable conditions, not exhaustive."
+    "Without the skill, models tend to parse the webhook body before checking auth, use `===` instead of a timing-safe compare, and skip the requestId idempotency step \u2014 watch for those specifically in the baseline run.",
+    "`assertions` are necessary mechanically-checkable conditions, not exhaustive.",
+    "Cases 1-3 cover Vouch hosted verification (private data). Case 4 covers the Social Data API (public data) \u2014 watch for models reaching for getDataSourceUrl when no end user is involved."
   ],
   "evals": [
     {
@@ -37,6 +38,19 @@
         "States that webhookUrl is a required field in VouchSDK.start params",
         "References an iOS support/version guard (e.g. VouchSDK.isSupported()) before starting verification, or explicitly notes iOS 14-16.3 is unsupported"
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "A brand pasted an Instagram post URL into our campaign form. Pull the like and comment counts for that post and tell me who liked it, then retry sensibly when the scraper is rate limited.",
+      "expected_output": "Uses the Social Data API rather than the Vouch SDK, because this is public data with no end user to verify. Reads metrics via GET /admin/challenges/{challengeId}/metrics and checks lastRefresh, not just data.fetchedAt, before trusting the counts. Drives likers as an async job: POST .../likers/refresh, poll .../likers/status until a terminal status, then page .../likers. Retries only transient failures (429/502/503), honours Retry-After, and treats 404, 422, 401 and 403 as permanent.",
+      "assertions": [
+        "Reaches for the Social Data API endpoints rather than @getvouch/sdk getDataSourceUrl for this public-data request",
+        "Treats likers as asynchronous: starts a refresh, polls a status endpoint, and only then reads rows, rather than expecting likers inline",
+        "Bounds the polling loop with a deadline or maximum attempt count instead of looping until a terminal status forever",
+        "Does not retry 401 or 403, and does not retry the permanent scraping codes (POST_NOT_FOUND, POST_NOT_ACCESSIBLE, POST_AGE_RESTRICTED)",
+        "Reads Retry-After for 429 rather than using a fixed sleep, and does not assume the header is always numeric seconds",
+        "Notes that likers are Instagram-only, or that fetched liker counts may undercount the visible like count"
+      ]
     }
   ],
   "trigger_tests": {
@@ -44,7 +58,8 @@
       "I need to let creators connect their Instagram account and verify their follower count before we approve a payout.",
       "Build a webhook handler that receives Vouch verification results and links the verified account to our user record.",
       "How do I generate a Vouch hosted verification URL for a TikTok proof and correlate it back to my user when they return?",
-      "Set up in-app bank account verification inside our React Native app using Vouch."
+      "Set up in-app bank account verification inside our React Native app using Vouch.",
+      "Fetch the comments and like counts on this public Instagram post and tell me which of our registered creators engaged with it."
     ],
     "should_not_activate": [
       "I want to cryptographically prove that this third-party API returned a specific JSON response, independent of any user identity flow.",
